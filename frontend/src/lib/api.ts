@@ -5,6 +5,7 @@ import type { AxiosInstance, AxiosError } from 'axios';
 // Create axios instance - use relative path for Next.js proxy
 const api: AxiosInstance = axios.create({
   baseURL: '/api',
+  timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },

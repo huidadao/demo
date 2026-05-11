@@ -1,6 +1,7 @@
 """Authentication API endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
@@ -143,4 +144,4 @@ async def get_stats(
     Returns:
         Dashboard statistics including user counts and active users
     """
-    return auth_service.get_dashboard_stats(session)
+    return await run_in_threadpool(auth_service.get_dashboard_stats, session)
