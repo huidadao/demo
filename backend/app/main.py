@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import create_db_and_tables
 from app.api.auth import router as auth_router
+from app.logging import TransactionLoggingMiddleware
 
 # Create FastAPI app
 app = FastAPI(
@@ -12,6 +13,9 @@ app = FastAPI(
     description="Full-stack user authentication system",
     version="1.0.0",
 )
+
+# Transaction logging middleware (must be added before CORS to capture all requests)
+app.add_middleware(TransactionLoggingMiddleware)
 
 # CORS middleware configuration - allow all for development
 app.add_middleware(
