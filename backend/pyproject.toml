@@ -1,0 +1,17 @@
+[project]
+name = "backend"
+version = "1.0.0"
+description = "User Authentication API"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "sqlmodel>=0.0.14",
+    "pydantic[email]>=2.5.0",
+    "bcrypt>=4.1.0",
+    "pyjwt>=2.8.0",
+    "python-multipart>=0.0.6",
+]
+
+[tool.uv]
+dev-dependencies = []
