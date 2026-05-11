@@ -128,3 +128,19 @@ async def update_current_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+
+
+@router.get("/stats")
+async def get_stats(
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Get dashboard statistics.
+
+    Args:
+        session: Database session
+
+    Returns:
+        Dashboard statistics including user counts and active users
+    """
+    return auth_service.get_dashboard_stats(session)

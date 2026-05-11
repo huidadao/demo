@@ -68,4 +68,9 @@ export const authApi = {
     const response = await api.put('/auth/me', { email });
     return response.data;
   },
+
+  getStats: async () => {
+    const response = await api.get('/auth/stats');
+    return response.data;
+  },
 };

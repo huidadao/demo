@@ -4,6 +4,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel import select
 
+from datetime import datetime
+
 from app.models.user import User
 from app.database import get_session
 from app.services.auth_service import decode_token
@@ -69,6 +71,11 @@ async def get_current_user(
             detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Update last seen timestamp
+    user.last_seen_at = datetime.utcnow()
+    session.add(user)
+    session.commit()
 
     return user
 

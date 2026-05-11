@@ -1,7 +1,7 @@
 """Authentication service for JWT and password handling."""
 
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 from sqlmodel import select
 import bcrypt
 import jwt
@@ -190,3 +190,57 @@ async def update_user(session, user_id: int, email: Optional[str] = None) -> Use
     session.refresh(user)
 
     return user
+
+
+def get_dashboard_stats(session) -> dict:
+    """
+    Get dashboard statistics for users.
+
+    Args:
+        session: Database session
+
+    Returns:
+        Dictionary with total_users, today_signups, active_users, and users list
+    """
+    # Total users count
+    total_statement = select(User)
+    all_users = session.exec(total_statement).all()
+    total_users = len(all_users)
+
+    # Today's signups
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_signups = sum(1 for u in all_users if u.created_at and u.created_at >= today)
+
+    # Active users (seen in last 30 minutes)
+    active_threshold = datetime.utcnow() - timedelta(minutes=30)
+    active_users_list: List[User] = [
+        u for u in all_users
+        if u.last_seen_at and u.last_seen_at >= active_threshold
+    ]
+    active_users = len(active_users_list)
+
+    # Prepare user status list
+    users_status = []
+    now = datetime.utcnow()
+    for u in all_users:
+        if u.last_seen_at and u.last_seen_at >= active_threshold:
+            status = "online"
+        elif u.last_seen_at and u.last_seen_at >= now - timedelta(minutes=60):
+            status = "away"
+        else:
+            status = "offline"
+
+        users_status.append({
+            "id": u.id,
+            "email": u.email,
+            "status": status,
+            "last_seen": u.last_seen_at.isoformat() if u.last_seen_at else None,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+        })
+
+    return {
+        "total_users": total_users,
+        "today_signups": today_signups,
+        "active_users": active_users,
+        "users": users_status,
+    }
