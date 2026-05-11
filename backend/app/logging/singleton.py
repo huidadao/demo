@@ -24,10 +24,10 @@ class TransactionLogger:
     _instance: Optional["TransactionLogger"] = None
     _lock: asyncio.Lock = asyncio.Lock()
 
-    def __new__(cls) -> "TransactionLogger":
+    def __new__(cls, *args, **kwargs) -> "TransactionLogger":
         """
         Override __new__ to enforce singleton behavior.
-        
+
         Note: This is not thread-safe for instantiation across
         different event loops, but is safe within a single async app.
         """
