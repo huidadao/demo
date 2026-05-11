@@ -41,9 +41,14 @@ export function LoginForm() {
       // Fetch actual user data from backend
       const user = await authApi.getCurrentUser();
 
-      login(user, tokenResponse.access_token);
+      login(user, tokenResponse.access_token, tokenResponse.must_change_password);
       toast.success('Login successful!');
-      router.push('/dashboard');
+
+      if (tokenResponse.must_change_password) {
+        router.push('/change-password');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (error: any) {
       console.log('Login error caught:', error);
       console.log('Error response:', error?.response);

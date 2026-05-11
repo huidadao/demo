@@ -1,5 +1,6 @@
 """Authentication API endpoints."""
 
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,8 @@ from app.schemas.user import (
     TokenResponse,
     MessageResponse,
     UserUpdate,
+    ForgotPasswordRequest,
+    ChangePasswordRequest,
 )
 from app.services import auth_service
 from app.dependencies.auth import get_current_user
@@ -77,7 +80,73 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Update last_seen_at on successful login
+    user.last_seen_at = datetime.utcnow()
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
     return auth_service.create_token_response(user)
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+async def forgot_password(
+    data: ForgotPasswordRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Send temporary password to user's email.
+
+    Args:
+        data: Forgot password request with email
+        session: Database session
+
+    Returns:
+        Success message
+    """
+    try:
+        await auth_service.forgot_password(session, data.email)
+        return MessageResponse(message="Temporary password sent to your email")
+    except ValueError:
+        # Don't reveal whether email exists
+        return MessageResponse(message="If the email exists, a temporary password has been sent")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send email: {str(e)}",
+        )
+
+
+@router.put("/change-password", response_model=MessageResponse)
+async def change_password(
+    data: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Change user password.
+
+    Args:
+        data: Change password request
+        current_user: Authenticated user
+        session: Database session
+
+    Returns:
+        Success message
+    """
+    try:
+        await auth_service.change_password(
+            session,
+            current_user.id,
+            data.current_password,
+            data.new_password,
+        )
+        return MessageResponse(message="Password changed successfully")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
 
 
 @router.get("/me", response_model=UserResponse)

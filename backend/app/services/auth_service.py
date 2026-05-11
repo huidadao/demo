@@ -1,5 +1,7 @@
 """Authentication service for JWT and password handling."""
 
+import secrets
+import string
 from datetime import datetime, timedelta
 from typing import Optional, List
 from sqlmodel import select
@@ -8,6 +10,7 @@ import jwt
 
 from app.models.user import User
 from app.schemas.user import UserCreate, UserLogin, TokenResponse
+from app.services.email_service import EmailService
 
 # JWT Configuration
 SECRET_KEY = "your-secret-key-change-in-production"
@@ -45,13 +48,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     )
 
 
-def create_access_token(user_id: int, email: str) -> str:
+def create_access_token(user_id: int, email: str, must_change_password: bool = False) -> str:
     """
     Create a JWT access token.
 
     Args:
         user_id: User's ID
         email: User's email
+        must_change_password: Whether user must change password on next login
 
     Returns:
         JWT token string
@@ -60,6 +64,7 @@ def create_access_token(user_id: int, email: str) -> str:
     payload = {
         "sub": str(user_id),
         "email": email,
+        "must_change_password": must_change_password,
         "exp": expire,
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
@@ -121,6 +126,7 @@ async def register_user(session, user_data: UserCreate) -> User:
 async def authenticate_user(session, login_data: UserLogin) -> Optional[User]:
     """
     Authenticate a user by email and password.
+    Also accepts valid temporary passwords.
 
     Args:
         session: Database session
@@ -135,10 +141,15 @@ async def authenticate_user(session, login_data: UserLogin) -> Optional[User]:
     if not user:
         return None
 
-    if not verify_password(login_data.password, user.password_hash):
-        return None
+    # Check regular password
+    if verify_password(login_data.password, user.password_hash):
+        return user
 
-    return user
+    # Check temporary password if exists and not expired
+    if user.temp_password_hash and user.temp_password_expires_at:
+        if datetime.utcnow() <= user.temp_password_expires_at:
+            if verify_password(login_data.password, user.temp_password_hash):
+                return user
 
 
 def create_token_response(user: User) -> TokenResponse:
@@ -149,10 +160,106 @@ def create_token_response(user: User) -> TokenResponse:
         user: Authenticated User object
 
     Returns:
-        TokenResponse with access token
+        TokenResponse with access token and must_change_password flag
     """
-    access_token = create_access_token(user.id, user.email)
-    return TokenResponse(access_token=access_token, token_type="bearer")
+    access_token = create_access_token(
+        user.id, user.email, must_change_password=user.must_change_password
+    )
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        must_change_password=user.must_change_password,
+    )
+
+
+def generate_temp_password(length: int = 12) -> str:
+    """Generate a random temporary password."""
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+async def forgot_password(session, email: str) -> None:
+    """
+    Generate a temporary password and send it via email.
+
+    Args:
+        session: Database session
+        email: User's email address
+
+    Raises:
+        ValueError: If user not found
+    """
+    statement = select(User).where(User.email == email)
+    user = session.exec(statement).first()
+
+    if not user:
+        raise ValueError("User not found")
+
+    temp_password = generate_temp_password()
+    temp_hash = hash_password(temp_password)
+
+    user.temp_password_hash = temp_hash
+    user.temp_password_expires_at = datetime.utcnow() + timedelta(hours=1)
+    user.must_change_password = True
+    user.updated_at = datetime.utcnow()
+
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    # Send email (async)
+    email_service = EmailService()
+    await email_service.send_temp_password(email, temp_password)
+
+
+async def change_password(
+    session, user_id: int, current_password: str, new_password: str
+) -> User:
+    """
+    Change user password after verifying current password.
+
+    Args:
+        session: Database session
+        user_id: User's ID
+        current_password: Current or temporary password
+        new_password: New password to set
+
+    Returns:
+        Updated User object
+
+    Raises:
+        ValueError: If user not found or current password is invalid
+    """
+    statement = select(User).where(User.id == user_id)
+    user = session.exec(statement).first()
+
+    if not user:
+        raise ValueError("User not found")
+
+    # Verify current password (regular or temporary)
+    valid = verify_password(current_password, user.password_hash)
+    if not valid and user.temp_password_hash:
+        if (
+            user.temp_password_expires_at
+            and datetime.utcnow() <= user.temp_password_expires_at
+        ):
+            valid = verify_password(current_password, user.temp_password_hash)
+
+    if not valid:
+        raise ValueError("Current password is incorrect")
+
+    # Update password
+    user.password_hash = hash_password(new_password)
+    user.temp_password_hash = None
+    user.temp_password_expires_at = None
+    user.must_change_password = False
+    user.updated_at = datetime.utcnow()
+
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    return user
 
 
 async def update_user(session, user_id: int, email: Optional[str] = None) -> User:

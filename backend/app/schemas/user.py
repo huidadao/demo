@@ -47,3 +47,24 @@ class UserUpdate(BaseModel):
     """Schema for user profile update."""
 
     email: Optional[EmailStr] = None
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Schema for forgot password request."""
+
+    email: EmailStr
+
+
+class ChangePasswordRequest(BaseModel):
+    """Schema for password change request."""
+
+    current_password: str
+    new_password: str
+
+
+class TokenResponse(BaseModel):
+    """Schema for JWT token response."""
+
+    access_token: str
+    token_type: str = "bearer"
+    must_change_password: bool = False
