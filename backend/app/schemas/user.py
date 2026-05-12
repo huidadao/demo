@@ -68,3 +68,24 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     must_change_password: bool = False
+
+
+class RegisterResponse(BaseModel):
+    """Schema for user registration response with verification."""
+
+    message: str
+    email: str
+    verification_options: list
+
+
+class VerifyEmailRequest(BaseModel):
+    """Schema for email verification request."""
+
+    email: EmailStr
+    code: str
+
+
+class ResendVerificationRequest(BaseModel):
+    """Schema for resend verification email request."""
+
+    email: EmailStr

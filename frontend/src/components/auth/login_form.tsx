@@ -53,19 +53,31 @@ export function LoginForm() {
       console.log('Login error caught:', error);
       console.log('Error response:', error?.response);
       console.log('Error data:', error?.response?.data);
-      
+
+      const status = error?.response?.status;
+      const detail = error?.response?.data?.detail;
+
+      // Handle unverified user (403)
+      if (status === 403 && detail?.verification_options) {
+        toast.error(detail.message || 'Please verify your email first.');
+        const searchParams = new URLSearchParams();
+        searchParams.set('email', email);
+        searchParams.set('options', JSON.stringify(detail.verification_options));
+        router.push(`/verify-email?${searchParams.toString()}`);
+        return;
+      }
+
       // Handle different error structures
       let errorMessage = 'Login failed. Please try again.';
-      
-      // Try to get error message from response
-      if (error?.response?.data?.detail) {
-        errorMessage = error.response.data.detail;
-      } else if (error?.response?.status === 401) {
+
+      if (typeof detail === 'string') {
+        errorMessage = detail;
+      } else if (status === 401) {
         errorMessage = 'Invalid email or password';
       } else if (error?.message) {
         errorMessage = error.message;
       }
-      
+
       toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);

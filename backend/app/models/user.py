@@ -28,3 +28,6 @@ class User(SQLModel, table=True):
     temp_password_hash: Optional[str] = Field(default=None, max_length=255)
     temp_password_expires_at: Optional[datetime] = Field(default=None)
     must_change_password: bool = Field(default=False)
+    is_verified: bool = Field(default=False)
+    verification_code: Optional[str] = Field(default=None, max_length=10)
+    verification_code_expires_at: Optional[datetime] = Field(default=None)

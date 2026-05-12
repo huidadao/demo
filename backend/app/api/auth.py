@@ -16,6 +16,9 @@ from app.schemas.user import (
     UserUpdate,
     ForgotPasswordRequest,
     ChangePasswordRequest,
+    RegisterResponse,
+    VerifyEmailRequest,
+    ResendVerificationRequest,
 )
 from app.services import auth_service
 from app.dependencies.auth import get_current_user
@@ -25,49 +28,69 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post(
-    "/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED
+    "/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED
 )
 async def register(
     user_data: UserCreate,
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Register a new user account.
+    Register a new user account and send verification email.
 
     Args:
         user_data: User registration data
         session: Database session
 
     Returns:
-        Created user information
+        Registration response with verification options
 
     Raises:
-        HTTPException: If email already registered
+        HTTPException: If email already registered or SMTP error
     """
     try:
-        user = await auth_service.register_user(session, user_data)
-        return user
+        result = await auth_service.register_user(session, user_data)
+        return RegisterResponse(
+            message="Account created. Please verify your email.",
+            email=result["user"].email,
+            verification_options=result["verification_options"],
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
+    except aiosmtplib.SMTPAuthenticationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send email: {str(e)}",
+        )
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login")
 async def login(
     login_data: UserLogin,
     session: AsyncSession = Depends(get_session),
 ):
     """
     Authenticate user and return JWT token.
+    If user is not verified, resend verification email.
 
     Args:
         login_data: User login credentials
         session: Database session
 
     Returns:
-        Access token
+        Access token or verification required response
 
     Raises:
         HTTPException: If credentials are invalid
@@ -81,6 +104,26 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Check if user is verified
+    if not user.is_verified:
+        try:
+            verification_data = await auth_service.resend_verification(session, user.email)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "message": "Email not verified. A new verification code has been sent to your email.",
+                    "email": user.email,
+                    "verification_options": verification_data["options"],
+                },
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to resend verification: {str(e)}",
+            )
+
     # Update last_seen_at on successful login
     user.last_seen_at = datetime.utcnow()
     session.add(user)
@@ -88,6 +131,81 @@ async def login(
     session.refresh(user)
 
     return auth_service.create_token_response(user)
+
+
+@router.post("/verify-email", response_model=MessageResponse)
+async def verify_email(
+    data: VerifyEmailRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Verify user's email with the provided code.
+
+    Args:
+        data: Verification request with email and code
+        session: Database session
+
+    Returns:
+        Success message
+
+    Raises:
+        HTTPException: If verification fails
+    """
+    try:
+        await auth_service.verify_email(session, data.email, data.code)
+        return MessageResponse(message="Email verified successfully. You can now log in.")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+
+@router.post("/resend-verification")
+async def resend_verification(
+    data: ResendVerificationRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Resend verification email to user.
+
+    Args:
+        data: Resend verification request with email
+        session: Database session
+
+    Returns:
+        Verification options for frontend display
+
+    Raises:
+        HTTPException: If user not found or already verified
+    """
+    try:
+        verification_data = await auth_service.resend_verification(session, data.email)
+        return {
+            "message": "Verification code sent to your email.",
+            "email": data.email,
+            "verification_options": verification_data["options"],
+        }
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
+    except aiosmtplib.SMTPAuthenticationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send email: {str(e)}",
+        )
 
 
 @router.post("/forgot-password", response_model=MessageResponse)

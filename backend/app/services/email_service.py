@@ -93,3 +93,25 @@ class EmailService:
             f"If you did not request this, please ignore this email.\n"
         )
         await self.send_email(to_email, subject, body)
+
+    async def send_verification_code(self, to_email: str, code: str, options: list) -> None:
+        """
+        Send email verification code with CAPTCHA-style options.
+
+        Args:
+            to_email: User's email address
+            code: The correct verification code (2-digit number)
+            options: List of 3 code options to display in the email
+        """
+        subject = "Verify Your Email Address"
+        options_str = "   ".join([f"[{opt}]" for opt in options])
+        body = (
+            f"Hello,\n\n"
+            f"Thank you for registering. Please verify your email address.\n\n"
+            f"Your verification code is: {code}\n\n"
+            f"Options: {options_str}\n\n"
+            f"Please click the correct number button on the verification page.\n\n"
+            f"This code will expire in 30 minutes.\n\n"
+            f"If you did not request this, please ignore this email.\n"
+        )
+        await self.send_email(to_email, subject, body)

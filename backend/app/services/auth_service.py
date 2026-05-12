@@ -89,16 +89,16 @@ def decode_token(token: str) -> Optional[dict]:
         return None
 
 
-async def register_user(session, user_data: UserCreate) -> User:
+async def register_user(session, user_data: UserCreate) -> dict:
     """
-    Register a new user.
+    Register a new user and send verification email.
 
     Args:
         session: Database session
         user_data: User registration data
 
     Returns:
-        Created User object
+        Dictionary with user info and verification options
 
     Raises:
         ValueError: If email already exists
@@ -115,12 +115,19 @@ async def register_user(session, user_data: UserCreate) -> User:
     db_user = User(
         email=user_data.email,
         password_hash=hashed_password,
+        is_verified=False,
     )
     session.add(db_user)
     session.commit()
     session.refresh(db_user)
 
-    return db_user
+    # Send verification email
+    verification_data = await send_verification_email(session, db_user)
+
+    return {
+        "user": db_user,
+        "verification_options": verification_data["options"],
+    }
 
 
 async def authenticate_user(session, login_data: UserLogin) -> Optional[User]:
@@ -176,6 +183,122 @@ def generate_temp_password(length: int = 12) -> str:
     """Generate a random temporary password."""
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def generate_verification_code() -> str:
+    """Generate a random 2-digit verification code."""
+    return f"{secrets.randbelow(90) + 10:02d}"
+
+
+def generate_verification_options(correct_code: str) -> list:
+    """
+    Generate 3 verification code options including the correct one.
+    Returns a shuffled list of 3 unique 2-digit codes.
+    """
+    options = {correct_code}
+    while len(options) < 3:
+        new_code = f"{secrets.randbelow(90) + 10:02d}"
+        options.add(new_code)
+    return list(options)
+
+
+async def send_verification_email(session, user: User) -> dict:
+    """
+    Generate and send email verification code.
+
+    Args:
+        session: Database session
+        user: User to verify
+
+    Returns:
+        Dictionary with code options for frontend display
+    """
+    code = generate_verification_code()
+    options = generate_verification_options(code)
+
+    user.verification_code = code
+    user.verification_code_expires_at = datetime.utcnow() + timedelta(minutes=30)
+    user.updated_at = datetime.utcnow()
+
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    email_service = EmailService()
+    await email_service.send_verification_code(user.email, code, options)
+
+    return {"options": options, "email": user.email}
+
+
+async def verify_email(session, email: str, code: str) -> User:
+    """
+    Verify user's email with the provided code.
+
+    Args:
+        session: Database session
+        email: User's email
+        code: Verification code
+
+    Returns:
+        Updated User object
+
+    Raises:
+        ValueError: If user not found, code expired, or code invalid
+    """
+    statement = select(User).where(User.email == email)
+    user = session.exec(statement).first()
+
+    if not user:
+        raise ValueError("User not found")
+
+    if user.is_verified:
+        raise ValueError("Email already verified")
+
+    if not user.verification_code or not user.verification_code_expires_at:
+        raise ValueError("No verification code found. Please request a new one.")
+
+    if datetime.utcnow() > user.verification_code_expires_at:
+        raise ValueError("Verification code expired. Please request a new one.")
+
+    if user.verification_code != code:
+        raise ValueError("Invalid verification code")
+
+    user.is_verified = True
+    user.verification_code = None
+    user.verification_code_expires_at = None
+    user.updated_at = datetime.utcnow()
+
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    return user
+
+
+async def resend_verification(session, email: str) -> dict:
+    """
+    Resend verification email to user.
+
+    Args:
+        session: Database session
+        email: User's email
+
+    Returns:
+        Dictionary with code options
+
+    Raises:
+        ValueError: If user not found or already verified
+    """
+    statement = select(User).where(User.email == email)
+    user = session.exec(statement).first()
+
+    if not user:
+        raise ValueError("User not found")
+
+    if user.is_verified:
+        raise ValueError("Email already verified")
+
+    return await send_verification_email(session, user)
 
 
 async def forgot_password(session, email: str) -> None:
