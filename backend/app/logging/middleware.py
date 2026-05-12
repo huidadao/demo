@@ -98,6 +98,44 @@ class TransactionLoggingMiddleware(BaseHTTPMiddleware):
             return user.id
         return None
 
+    @staticmethod
+    async def _get_response_error(response: Response) -> Optional[str]:
+        """
+        Read response body for error status codes (>= 400) and extract detail.
+
+        Args:
+            response: Starlette/FastAPI response object.
+
+        Returns:
+            Error detail string or None.
+        """
+        try:
+            body_bytes = b""
+            async for chunk in response.body_iterator:
+                body_bytes += chunk
+
+            # Reconstruct response so client still receives it
+            async def new_body_iterator():
+                yield body_bytes
+
+            response.body_iterator = new_body_iterator()
+
+            import json
+            body_json = json.loads(body_bytes.decode("utf-8"))
+
+            # FastAPI error responses typically have {"detail": "..."}
+            if isinstance(body_json, dict):
+                detail = body_json.get("detail")
+                if isinstance(detail, str):
+                    return detail
+                elif isinstance(detail, dict):
+                    return json.dumps(detail, ensure_ascii=False)
+                elif isinstance(detail, list):
+                    return json.dumps(detail, ensure_ascii=False)
+            return json.dumps(body_json, ensure_ascii=False)
+        except Exception:
+            return None
+
     async def dispatch(self, request: Request, call_next) -> Response:
         """
         Process request/response and log transaction asynchronously.
@@ -127,6 +165,11 @@ class TransactionLoggingMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             status_code = response.status_code
+
+            # Capture error detail from response body for 4xx/5xx errors
+            if status_code >= 400:
+                error_message = await self._get_response_error(response)
+
         except Exception as exc:
             status_code = 500
             error_message = str(exc)
@@ -139,8 +182,6 @@ class TransactionLoggingMiddleware(BaseHTTPMiddleware):
             response_size: Optional[int] = None
             if "response" in locals():
                 try:
-                    body_iterator = response.body_iterator
-                    # For Starlette responses, try to get content length
                     if hasattr(response, "body"):
                         response_size = len(response.body)
                 except Exception:
