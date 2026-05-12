@@ -4,6 +4,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
+import aiosmtplib
 
 from app.database import get_session
 from app.schemas.user import (
@@ -105,7 +106,7 @@ async def forgot_password(
         Success message if email exists
 
     Raises:
-        HTTPException: If email not found (404) or server error (500)
+        HTTPException: 404 if email not found, 503 if SMTP misconfigured/auth failed, 500 otherwise
     """
     try:
         await auth_service.forgot_password(session, data.email)
@@ -113,6 +114,16 @@ async def forgot_password(
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
+    except aiosmtplib.SMTPAuthenticationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e),
         )
     except Exception as e:

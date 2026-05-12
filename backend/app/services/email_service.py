@@ -2,6 +2,7 @@
 
 import os
 import aiosmtplib
+from aiosmtplib.errors import SMTPAuthenticationError, SMTPException
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -32,6 +33,13 @@ class EmailService:
         self.password = password or os.getenv("SMTP_PASSWORD", "")
         self.from_addr = from_addr or os.getenv("SMTP_FROM") or self.username
 
+        if not self.username or not self.password:
+            raise RuntimeError(
+                "SMTP credentials not configured. "
+                "Please set SMTP_USERNAME and SMTP_PASSWORD environment variables "
+                "or create a .env file with these values."
+            )
+
     async def send_email(self, to_email: str, subject: str, body: str) -> None:
         """
         Send an email asynchronously via SMTP.
@@ -40,6 +48,10 @@ class EmailService:
             to_email: Recipient email address
             subject: Email subject
             body: Plain text email body
+
+        Raises:
+            SMTPAuthenticationError: If SMTP credentials are invalid.
+            SMTPException: If any other SMTP error occurs.
         """
         message = MIMEMultipart("alternative")
         message["Subject"] = subject
@@ -47,14 +59,22 @@ class EmailService:
         message["To"] = to_email
         message.attach(MIMEText(body, "plain", "utf-8"))
 
-        await aiosmtplib.send(
-            message,
-            hostname=self.host,
-            port=self.port,
-            start_tls=True,
-            username=self.username,
-            password=self.password,
-        )
+        try:
+            await aiosmtplib.send(
+                message,
+                hostname=self.host,
+                port=self.port,
+                start_tls=True,
+                username=self.username,
+                password=self.password,
+            )
+        except SMTPAuthenticationError as exc:
+            raise SMTPAuthenticationError(
+                "SMTP authentication failed. Please check your SMTP_USERNAME and "
+                "SMTP_PASSWORD. If using Gmail, ensure you are using an App Password, "
+                "not your account password. Enable 2FA and generate an App Password at: "
+                "https://myaccount.google.com/apppasswords"
+            ) from exc
 
     async def send_temp_password(self, to_email: str, temp_password: str) -> None:
         """

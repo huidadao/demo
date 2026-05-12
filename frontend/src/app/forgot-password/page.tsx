@@ -26,10 +26,14 @@ export default function ForgotPasswordPage() {
 
       if (status === 404) {
         setError(detail || 'Email not found');
+        toast.error('Email not found');
+      } else if (status === 503) {
+        setError(detail || 'Email service is not configured');
+        toast.error('Email service is not configured');
       } else {
         setError(detail || 'Failed to send reset email');
+        toast.error('Failed to send reset email');
       }
-      toast.error('Failed to send reset email');
     } finally {
       setLoading(false);
     }
