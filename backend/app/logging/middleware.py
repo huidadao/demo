@@ -123,11 +123,13 @@ class TransactionLoggingMiddleware(BaseHTTPMiddleware):
                 body_dict = self._mask_sensitive_data(body_dict)
 
         # Execute the actual request handler
+        error_message: Optional[str] = None
         try:
             response = await call_next(request)
             status_code = response.status_code
         except Exception as exc:
             status_code = 500
+            error_message = str(exc)
             raise exc
         finally:
             # Always calculate duration and log
@@ -154,6 +156,7 @@ class TransactionLoggingMiddleware(BaseHTTPMiddleware):
                 .with_user(self._extract_user_id(request))
                 .with_body(body_dict)
                 .with_response_size(response_size)
+                .with_error(error_message)
                 .build()
             )
 

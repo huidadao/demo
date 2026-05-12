@@ -21,6 +21,7 @@ class LogEntry(BaseModel):
     user_id: Optional[int] = Field(default=None, description="Authenticated user ID if available")
     request_body: Optional[Dict[str, Any]] = Field(default=None, description="Request body (sensitive fields masked)")
     response_size: Optional[int] = Field(default=None, description="Response body size in bytes")
+    error_message: Optional[str] = Field(default=None, description="Exception or error message if request failed")
 
     class Config:
         """Pydantic configuration."""

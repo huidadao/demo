@@ -38,6 +38,7 @@ class LogEntryBuilder:
         self._user_id: Optional[int] = None
         self._request_body: Optional[Dict[str, Any]] = None
         self._response_size: Optional[int] = None
+        self._error_message: Optional[str] = None
 
     def with_timestamp(self, timestamp: datetime) -> Self:
         """Set the log timestamp."""
@@ -77,6 +78,11 @@ class LogEntryBuilder:
         self._response_size = size
         return self
 
+    def with_error(self, error: Optional[str]) -> Self:
+        """Set error message if request failed."""
+        self._error_message = error
+        return self
+
     def build(self) -> LogEntry:
         """
         Build and return the LogEntry.
@@ -95,4 +101,5 @@ class LogEntryBuilder:
             user_id=self._user_id,
             request_body=self._request_body,
             response_size=self._response_size,
+            error_message=self._error_message,
         )

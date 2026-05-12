@@ -32,6 +32,7 @@ class PlainTextFormatter(LogFormatter):
         user_str = f"User: {entry.user_id}" if entry.user_id else "User: anonymous"
         ua_str = f" | UA: {entry.user_agent}" if entry.user_agent else ""
         size_str = f" | Size: {entry.response_size}B" if entry.response_size else ""
+        error_str = f" | ERROR: {entry.error_message}" if entry.error_message else ""
 
         return (
             f"[{entry.timestamp.isoformat()}] "
@@ -43,4 +44,5 @@ class PlainTextFormatter(LogFormatter):
             f"{body_str}"
             f"{ua_str}"
             f"{size_str}"
+            f"{error_str}"
         )
