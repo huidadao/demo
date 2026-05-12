@@ -8,17 +8,27 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
 
     setLoading(true);
+    setError('');
     try {
       await authApi.forgotPassword(email);
       setSent(true);
-      toast.success('If the email exists, a temporary password has been sent');
-    } catch {
+      toast.success('Temporary password sent to your email');
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+
+      if (status === 404) {
+        setError(detail || 'Email not found');
+      } else {
+        setError(detail || 'Failed to send reset email');
+      }
       toast.error('Failed to send reset email');
     } finally {
       setLoading(false);
@@ -35,7 +45,7 @@ export default function ForgotPasswordPage() {
         {sent ? (
           <div className="text-center">
             <p className="text-green-600 mb-4">
-              A temporary password has been sent to your email if it exists in our system.
+              A temporary password has been sent to your email.
             </p>
             <p className="text-sm text-gray-500 mb-4">
               Please check your inbox and use the temporary password to log in.
@@ -61,6 +71,9 @@ export default function ForgotPasswordPage() {
                 placeholder="you@example.com"
                 required
               />
+              {error && (
+                <p className="mt-1 text-sm text-red-600">{error}</p>
+              )}
             </div>
 
             <button

@@ -102,14 +102,19 @@ async def forgot_password(
         session: Database session
 
     Returns:
-        Success message
+        Success message if email exists
+
+    Raises:
+        HTTPException: If email not found (404) or server error (500)
     """
     try:
         await auth_service.forgot_password(session, data.email)
         return MessageResponse(message="Temporary password sent to your email")
-    except ValueError:
-        # Don't reveal whether email exists
-        return MessageResponse(message="If the email exists, a temporary password has been sent")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
